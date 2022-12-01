@@ -1,11 +1,14 @@
 import React from "react";
 import {
-  PaymentElement,
+  CardNumberElement,
+  CardCvcElement,
+  CardExpiryElement,
   useStripe,
-  useElements
+  useElements,
 } from "@stripe/react-stripe-js";
 
-export default function CheckoutForm() {
+export default function CheckoutFormCustom({ clientSecret: secret }) {
+  console.log()
   const stripe = useStripe();
   const elements = useElements();
 
@@ -54,35 +57,63 @@ export default function CheckoutForm() {
 
     setIsLoading(true);
 
-    const { error } = await stripe.confirmPayment({
-      elements,
-      confirmParams: {
-        // Make sure to change this to your payment completion page
-        return_url: "http://localhost:3000/success",
-      },
+    // const cardElement = elements.getElement(CardNumberElement);
+    const cardElement = elements.getElement('cardNumber');
+
+    const paymentMethodReq = await stripe.createPaymentMethod({
+      type: "card",
+      card: cardElement,
+      billing_details: {
+        name: "John",
+        email: "john@example.com",
+        address: {
+          // city: "New York",
+          // line1: "896 Bell Street",
+          // state: "New York",
+          postal_code: "10022"
+        }
+      }
     });
 
-    // This point will only be reached if there is an immediate error when
-    // confirming the payment. Otherwise, your customer will be redirected to
-    // your `return_url`. For some payment methods like iDEAL, your customer will
-    // be redirected to an intermediate site first to authorize the payment, then
-    // redirected to the `return_url`.
-    if (error.type === "card_error" || error.type === "validation_error") {
-      setMessage(error.message);
-    } else {
-      setMessage("An unexpected error occurred.");
+    if (paymentMethodReq.error) {
+      setMessage(paymentMethodReq.error.message);
+      setIsLoading(false);
+      return;
+    }
+
+    const { paymentIntent, error } = await stripe.confirmCardPayment(
+      secret,
+      {
+        payment_method: paymentMethodReq.paymentMethod.id,
+        return_url: "http://localhost:3000/success",
+      },
+      {
+        handleActions: false,
+      }
+    );
+    console.log('paymentIntent, error', paymentIntent, error)
+
+    if (error) {
+      if (error.type === "card_error" || error.type === "validation_error") {
+        setMessage(error.message);
+      } else {
+        setMessage("An unexpected error occurred.");
+      }
     }
 
     setIsLoading(false);
   };
 
-  const paymentElementOptions = {
-    layout: "tabs",
-  };
-
   return (
     <form id="payment-form" onSubmit={handleSubmit}>
-      <PaymentElement id="payment-element" options={paymentElementOptions} />
+      {/* <label>Email</label><br />
+      <input type={'email'} /><br /> */}
+      <label>Card number</label><br />
+      <CardNumberElement options={{ showIcon: true }} />
+      <label>Exp. date</label><br />
+      <CardExpiryElement />
+      <label>CVC</label><br />
+      <CardCvcElement />
       <button disabled={isLoading || !stripe || !elements} id="submit">
         <span id="button-text">
           {isLoading ? <div className="spinner" id="spinner"></div> : "Pay now"}
